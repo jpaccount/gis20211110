@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- CSS only -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css" integrity="sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2" crossorigin="anonymous">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+    integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+    crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+    integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+    crossorigin=""></script>
+
+    <style>
+        body {
+            padding: 0;
+            margin: 0;
+        }
+        html, body, #map {
+            height: 100%;
+            width: 100%;
+        }
+    </style>
+
+    <title>GIS 2021-11-10</title>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-md fixed-top navbar-dark bg-primary">
+        <form class="form-inline">
+            <input class="form-control mr-sm-2" id="lokasi" type="search" placeholder="Lokasi" aria-label="Search">
+            <button class="btn btn-success my-2 my-sm-0" onclick="searchLocation()" type="button">Cari</button>
+        </form>
+        <button class="btn btn-warning ml-auto" type="button" onclick="nearbyPlaces()">Nearby Places</button>
+        <button class="btn btn-dark ml-2" type="button" id="sgmap" onclick="shareGmap()" style="display: none;">Share to Google Map</button>
+    </nav>
+    <div id="map"></div>
+    <!-- JQuery -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.js"></script>
+    <!-- JavaScript Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx" crossorigin="anonymous"></script>
+    <script>
+        let locIcon = new L.Icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+        let sgmap = document.getElementById("sgmap");
+        var mapLoaded = false;
+        var latlng = [null, null];
+        var mymap = null;
+        var locsLnglat = [];
+        var locsMarker = [];
+        navigator.geolocation.getCurrentPosition(function(position) {
+            latlng = [position.coords.latitude, position.coords.longitude];
+            mymap = L.map('map').setView([position.coords.latitude, position.coords.longitude], 13);
+            mymap.zoomControl.setPosition('bottomright');
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 18
+            }).addTo(mymap);
+            var currentLoc = L.marker([position.coords.latitude,  position.coords.longitude],{title: "Current Position"}).addTo(mymap);
+            currentLoc.bindPopup("Your Current Position");
+            mapLoaded = true;
+        });
+        function nearbyPlaces() {
+            if(mapLoaded){
+                $('#lokasi').val("Nearby Places");
+                let getParam = {
+                    api_key: "e377243381d84066ad9046f6e76af055",
+                    limit: 70,
+                    categories: "healthcare.hospital,commercial,catering",
+                    bias: "proximity:"+latlng[1]+","+latlng[0],
+                    filter: "circle:"+latlng[1]+","+latlng[0]+",7000"
+                };
+                let httpParam = new URLSearchParams(getParam).toString();
+                $.get('https://api.geoapify.com/v2/places?'+httpParam,function(data,status){
+                    if(status == "success") {
+                        if(data.features) {
+                            locsLnglat = [];
+                            locsMarker.forEach((locMark) => {
+                                mymap.removeLayer(locMark);
+                            });
+                            locsMarker = [];
+                            data.features.forEach((feature) => {
+                                let locLnglat = feature.geometry.coordinates
+                                let locProp = feature.properties
+                                locsLnglat.push(locLnglat);
+                                let locMark = L.marker([locLnglat[1],  locLnglat[0]],{title: locProp.name,icon: locIcon}).addTo(mymap);
+                                locMark.bindPopup(locProp.formatted);
+                                locsMarker.push(locMark);
+                            });
+                            sgmap.style.display = "block";
+                        } else {
+                            sgmap.style.display = "none";
+                        }
+                    } else {
+                        sgmap.style.display = "none";
+                    }
+                })
+            }
+        }
+        function shareGmap() {
+            let cari = $('#lokasi').val();
+            if(cari.length > 0) {
+                let gmapUrl = "https://www.google.com/maps/search/"+cari+"/@"+latlng[0]+","+latlng[1]+",13z"
+                window.open(gmapUrl, '_blank').focus();
+            } else {
+                sgmap.style.display = "none";
+            }
+        }
+        function searchLocation() {
+            if(mapLoaded) {
+                let cari = $('#lokasi').val();
+                if(cari.toLowerCase().includes("nearby")) {
+                    nearbyPlaces();
+                    return;
+                }
+                if(cari.length > 0) {
+                    let getParam = {
+                        api_key: "5b3ce3597851110001cf6248ae1039a421ed4167a7fcb0191aa4f7f7",
+                        text: cari,
+                        'boundary.circle.lat': latlng[0], 
+                        'boundary.circle.lon': latlng[1], 
+                        'boundary.circle.radius': 7, 
+                        size: 50
+                    };
+                    let httpParam = new URLSearchParams(getParam).toString();
+                    $.get('https://api.openrouteservice.org/geocode/search?'+httpParam,function(data,status){
+                        if(status == "success") {
+                            if(data.features) {
+                                locsLnglat = [];
+                                locsMarker.forEach((locMark) => {
+                                    mymap.removeLayer(locMark);
+                                });
+                                locsMarker = [];
+                                data.features.forEach((feature) => {
+                                    let locLnglat = feature.geometry.coordinates
+                                    let locProp = feature.properties
+                                    locsLnglat.push(locLnglat);
+                                    let locMark = L.marker([locLnglat[1],  locLnglat[0]],{title: locProp.name,icon: locIcon}).addTo(mymap);
+                                    locMark.bindPopup(locProp.label+"\n"+locProp.street+" "+locProp.housenumber+". "+locProp.postalCode+".");
+                                    locsMarker.push(locMark);
+                                });
+                                sgmap.style.display = "block";
+                            } else {
+                                sgmap.style.display = "none";
+                            }
+                        } else {
+                            sgmap.style.display = "none";
+                        }
+                    });
+                } else {
+                    sgmap.style.display = "none";
+                }
+            }
+        }
+    </script>
+</body>
+</html>
